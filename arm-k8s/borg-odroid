@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+#
+# Prepare a new ARM node for assimilation into the cluster
+#
+# Copyright 2019, Joe Block <jpb@unixorn.net>
+#
+# License: Apache 2.0
+
+set -o pipefail
+
+setup-apt-repos() {
+  # First add the keys
+  curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add -
+  curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+
+  # Add the repos
+
+  # Docker
+  if [[ ! -r /etc/apt/sources.list.d/docker.list ]]; then
+    echo "deb [arch=armhf] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+  fi
+
+  # Kubernetes
+  if [[ ! -r /etc/apt/sources.list.d/kubernetes.list ]]; then
+    echo 'deb https://apt.kubernetes.io/ kubernetes-xenial main' >/etc/apt/sources.list.d/kubernetes.list
+  fi
+  apt-get update
+}
+
+update-stale-os() {
+  apt-get update
+  apt-get upgrade -y
+  apt-get dist-upgrade -y
+}
+
+install-support-tooling() {
+  apt-get install -y \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    dnsutils \
+    git \
+    gnupg2 \
+    htop \
+    lshw \
+    man \
+    net-tools \
+    python3-pip \
+    rsync \
+    software-properties-common \
+    sudo \
+    zsh
+  pip3 install setuptools wheel
+  pip3 install docker-compose
+}
+
+install-docker() {
+  apt-get install -y docker-ce
+}
+
+install-k8s() {
+  apt-get install -y kubelet kubeadm kubectl
+  apt-mark hold kubelet kubeadm kubectl
+}
+
+install-support-tooling
+update-stale-os
+setup-apt-repos
+install-docker
+install-k8s
