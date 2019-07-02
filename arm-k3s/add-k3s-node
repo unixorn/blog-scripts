@@ -1,0 +1,72 @@
+#!/bin/bash
+#
+# Install a k3s worker node
+#
+# Copyright 2019 Joe Block <jpb@unixorn.net>
+
+set -e
+set -o pipefail
+
+usage() {
+  echo "Usage: $(basename $0) [-m cluster-master-host] [-t <string>]" 1>&2
+  exit 1
+}
+
+WORK_D=$(mktemp -d)
+cd "${WORK_D}" || fail "Could not cd to ${WORK_D}"
+
+# Parse command line options
+
+while getopts ":m:t:" o; do
+  case "${o}" in
+    m)
+      K3S_MASTER=${OPTARG}
+      ;;
+    t)
+      raw_token=${OPTARG}
+      ;;
+    *)
+      usage
+      ;;
+  esac
+done
+shift $((OPTIND-1))
+
+if [ -z "${K3S_MASTER}" ] || [ -z "${raw_token}" ]; then
+  usage
+fi
+
+echo "master = ${K3S_MASTER}"
+echo "token = ${raw_token}"
+
+load_token() {
+  if [[ -f "$raw_token" ]]; then
+    K3S_NODE_TOKEN=$(cat $raw_token)
+  else
+    K3S_NODE_TOKEN="$raw_token"
+  fi
+}
+
+cleanup() {
+  if [[ -d "$WORK_D" ]]; then
+    rm -fr "${WORK_D}"
+  fi
+}
+
+get-installer() {
+  cd "${WORK_D}"
+  curl -sfL https://get.k3s.io -o k3s-install.sh
+  chmod +x k3s-install.sh
+}
+
+install-agent() {
+  "${WORK_D}/k3s-install.sh" agent --server https://$K3S_MASTER:6443 --kubelet-arg="address=0.0.0.0" --token "$K3S_NODE_TOKEN"
+  systemctl enable k3s-agent
+  kubectl label node "$(hostname)" kubernetes.io/role=agent node-role.kubernetes.io/agent=
+}
+
+trap exit cleanup
+
+get-installer
+install-agent
+cleanup
