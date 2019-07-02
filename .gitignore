@@ -1,0 +1,11 @@
+.DS_Store
+*.*.un~
+*.O
+*.bak
+*.o
+*.pyc
+*.pyo
+*.sublime-project
+*.sublime-workspace
+.*.swp
+.idea
