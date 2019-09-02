@@ -1,0 +1,69 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: purge-stale-duplicacy-snapshots
+  namespace: backups
+spec:
+  schedule: "48 */3 * * *"
+  jobTemplate:
+    spec:
+      concurrencyPolicy: Forbid
+      template:
+        spec:
+          containers:
+          - name: purge-stale-duplicacy-snapshots
+            # I'm running this on the odroids in my cluster, so I'm specifying
+            # the ARM7 build
+            image: unixorn/thoth-duplicacy:arm7l
+            # Use the x86_64 tag if you're on Intel
+            # image: unixorn/thoth-duplicacy:x86_64
+
+            # Make sure we run inside /data so that duplicacy can find
+            # the configuration directory.
+            workingDir: /data
+
+            # Remember that the -keep arguments must be listed from longest
+            # time frame to shortest, otherwise the disordered ones will be
+            # ignored, which could mean deleting snapshots you want to keep.
+            #
+            # I'm specifying to keep no snapshots more than 365 days old, keep
+            # a single snapshot every 30 days for snapshots older than 90 days,
+            # a single snapshot a week for snapshots older than 30 days, and 
+            # finally keep only a single snapshot per day for snapshots
+            # older than 2 days.
+            #
+            # Also note that the duplicacy verb (prune) has to come before
+            # any of the settings command line options.
+            args:
+            - duplicacy
+            - prune
+            - -storage
+            - b2
+            - -all
+            - -keep 0:365
+            - -keep 30:90
+            - -keep 7:14
+            - -keep 1:2
+            - -exhaustive
+
+            volumeMounts:
+              - name: data-volume
+                mountPath: /data/
+
+            env:
+              - name: DUPLICACY_BACKUP_THEAD_COUNT
+                value: "3"
+              - name: B2_STORAGE_NAME
+                value: "b2"
+
+          restartPolicy: OnFailure
+
+          volumes:
+            - name: data-volume
+              hostPath:
+                # This will be remapped to /data which is where duplicacy
+                # expects to find the data it is backing up, and the .duplicacy
+                # directory with its settings.
+                path: /dfs/volumes/exampledir
+                # this field is optional
+                type: Directory
