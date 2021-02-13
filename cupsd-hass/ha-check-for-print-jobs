@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+#
+# Check if there are print jobs on $PRINT_Q. If there are, write
+# MQTT messages to a watched topic so HA knows to turn on the power
+# to the printer.
+#
+# Copyright 2021, Joe Block <jpb@unixorn.net>
+#
+# License: Apache 2
+
+set -o pipefail
+
+# Make all these overridable easily in your cron setup
+PRINT_Q=${PRINT_Q:-'Franklin'}
+CONTAINER=${CONTAINER:-'cupsd-server'}
+MQTT_HOST=${MQTT_HOST:-'mqtt.example.com'}
+MQTT_TOPIC=${MQTT_TOPIC:-'hass/printers/gutenberg'}
+
+# We are run out of cron every minute, but I don't want it to take an
+# entire minute to turn on the power because I'm impatient and the printer
+# takes a bit to start up. When we print and walk downstairs, I want it
+# to have already started printing by the time I get there.
+#
+# So, when we get run by cron, we check the queue CHECK_COUNT times, with
+# CHECK_DELAY seconds between each run.
+CHECK_COUNT=${CHECK_COUNT:-'11'}
+CHECK_DELAY=${CHECK_DELAY:-'5'}
+
+export PATH="$PATH:/usr/local/bin:/usr/local/sbin"
+
+if [[ -f /tmp/printerdebug ]]; then
+  DEBUG='true'
+fi
+
+# Only spam syslog when DEBUG is set
+debugout() {
+  if [[ -n "$DEBUG" ]]; then
+    echo "$@"
+  fi
+}
+
+validate-settings(){
+  debugout "CONTAINER: $CONTAINER"
+  debugout "PRINT_Q: $PRINT_Q"
+  debugout "MQTT_HOST: $MQTT_HOST"
+  debugout "MQTT_TOPIC: $MQTT_TOPIC"
+
+  valid='true'
+  if [[ -z "$CONTAINER" ]]; then
+    echo "CONTAINER is unset"
+    valid='false'
+  fi
+  if [[ -z "$PRINT_Q" ]]; then
+    echo "PRINT_Q is unset"
+    valid='false'
+  fi
+  if [[ -z "$MQTT_HOST" ]]; then
+    echo "MQTT_HOST is unset"
+    valid='false'
+  fi
+  if [[ -z "$MQTT_TOPIC" ]]; then
+    echo "MQTT_TOPIC is unset"
+    valid='false'
+  fi
+  if [[ "$valid" == "false" ]]; then
+    echo "Configure your settings."
+    exit 1
+  fi
+}
+
+print-job-checker() {
+  printjobs=$(docker exec -t "$CONTAINER" lpq -P "$PRINT_Q" | grep -c 'no entries')
+
+  if [[ "$printjobs" == '1' ]]; then
+    debugout "No jobs in print queue, notifying HA"
+    c-mosquitto_pub -h "$MQTT_HOST" -t "$MQTT_TOPIC" -m OFF
+  else
+    echo "jobs found in print queue, notifying HA"
+
+    docker exec -t "$CONTAINER" lpq -P "$PRINT_Q"
+
+    # Set the status off, then back to on, so that the HA timer restarts
+    # and HA doesn't turn off the printer in the middle of a job
+    c-mosquitto_pub -h "$MQTT_HOST" -t "$MQTT_TOPIC" -m OFF
+    c-mosquitto_pub -h "$MQTT_HOST" -t "$MQTT_TOPIC" -m ON
+    debugout "re-enabling printer $PRINT_Q..."
+    docker exec -t "$CONTAINER" lpadmin -p "$PRINT_Q" -o printer-error-policy=retry-current-job
+  fi
+}
+
+validate-settings
+
+# We run the print-job-checker every 5 seconds to minimize the UI delay on the
+# macOs end
+
+for i in $(seq $CHECK_COUNT)
+do
+  print-job-checker
+  debugout "waiting..."
+  sleep $CHECK_DELAY
+done
