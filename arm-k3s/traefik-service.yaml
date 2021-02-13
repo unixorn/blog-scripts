@@ -30,7 +30,7 @@ metadata:
   namespace: kube-system
 spec:
   rules:
-  - host: traefiklb.example.com
+  - host: traefik.example.com
     http:
       paths:
       - path: /
