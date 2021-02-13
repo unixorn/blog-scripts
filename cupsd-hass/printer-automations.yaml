@@ -1,0 +1,20 @@
+# Franklin power is controlled by MQTT
+  - alias: 'Turn on Franklin when there are jobs in the queue'
+    trigger:
+      platform: state
+      entity_id: binary_sensor.franklin_print_queue
+      to: 'on'
+    action:
+      service: homeassistant.turn_on
+      entity_id: switch.printerpower
+
+  - alias: 'Turn off printer 15 minutes after print queue drains'
+    trigger:
+      platform: state
+      entity_id: binary_sensor.franklin_print_queue
+      to: 'off'
+      for:
+        minutes: 5
+    action:
+      service: homeassistant.turn_off
+      entity_id: switch.printerpower

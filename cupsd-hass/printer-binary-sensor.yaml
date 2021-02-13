@@ -1,0 +1,5 @@
+binary_sensor:
+  - platform: mqtt
+    name: "Franklin Print Queue"
+    payload_on: "ON"
+    state_topic: "hass/printers/franklin"
