@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#
+# Start shinobi
+#
+# Copyright 2021, Joe Block <jpb@unixorn.net>
+#
+# License: Apache 2.0
+
+SHINOBI_D=${SHINOBI_D:-'/data/shinobi'}
+
+set -o pipefail
+if [[ -n "$DEBUG" ]]; then
+  set -x
+fi
+
+for dvr_d in config customAutoLoad database plugins video
+do
+  mkdir -p "$SHINOBI_D/$dvr_d"
+done
+
+exec docker run -d -p 8080:8080 \
+  --name='shinobi' \
+  -v ${SHINOBI_D}/config:/config:rw \
+  -v ${SHINOBI_D}/customAutoLoad:/home/Shinobi/libs/customAutoLoad:rw \
+  -v ${SHINOBI_D}/database:/var/lib/mysql:rw \
+  -v ${SHINOBI_D}/plugins:/plugins:rw \
+  -v ${SHINOBI_D}/videos:/home/Shinobi/videos:rw \
+  -v /dev/shm/Shinobi/streams:/dev/shm/streams:rw \
+  -v /etc/localtime:/etc/localtime:ro \
+  -v /etc/timezone:/etc/timezone:ro \
+  shinobisystems/shinobi
